@@ -37,9 +37,10 @@ COLOR_SUBTEXT  = "#888888"
 class CardRow(ctk.CTkFrame):
     """Fila de resultado para una tarjeta."""
 
-    def __init__(self, master, number: str, expiry: str, account: str, **kwargs):
+    def __init__(self, master, number: str, expiry: str, account: str, card_data: dict = None, **kwargs):
         super().__init__(master, fg_color=COLOR_CARD, corner_radius=8, **kwargs)
         self.configure(height=48)
+        self._card_data = card_data  # datos completos para copiar
 
         # Icono de estado
         self.status_label = ctk.CTkLabel(
@@ -74,19 +75,41 @@ class CardRow(ctk.CTkFrame):
             self, text="Procesando...", font=ctk.CTkFont(size=12),
             text_color=COLOR_PENDING, anchor="w"
         )
-        self.msg_label.pack(side="left", padx=(4, 10), fill="x", expand=True)
+        self.msg_label.pack(side="left", padx=(4, 6), fill="x", expand=True)
+
+        # Botón copiar
+        self.copy_btn = ctk.CTkButton(
+            self, text="📋", width=32, height=26,
+            fg_color=COLOR_PANEL, hover_color=COLOR_SUBTEXT,
+            font=ctk.CTkFont(size=13),
+            command=self._copy
+        )
+        self.copy_btn.pack(side="right", padx=(0, 8))
+
+    def _copy(self):
+        if not self._card_data:
+            return
+        c = self._card_data
+        text = f"{c['number']} | {c['expiry_month']} | {c['expiry_year']} | {c['cvv']}"
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        # Feedback visual breve
+        self.copy_btn.configure(text="✅")
+        self.after(1200, lambda: self.copy_btn.configure(text="📋"))
 
     def set_account(self, account: str):
         self.acc_label.configure(text=account)
 
     def set_result(self, status: str, message: str):
-        if status == "OK":
+        if status != "OK" and "cvv" in message.lower():
+            self.status_label.configure(text="⚠", text_color=COLOR_PENDING)
+            self.msg_label.configure(text="Live : CVV inválido", text_color=COLOR_PENDING)
+        elif status == "OK":
             self.status_label.configure(text="✅", text_color=COLOR_SUCCESS)
             self.msg_label.configure(text=message, text_color=COLOR_SUCCESS)
         else:
             self.status_label.configure(text="❌", text_color=COLOR_FAIL)
             self.msg_label.configure(text=message, text_color=COLOR_FAIL)
-
     def set_running(self):
         self.status_label.configure(text="🔄", text_color=COLOR_PENDING)
         self.msg_label.configure(text="Procesando...", text_color=COLOR_PENDING)
@@ -238,6 +261,7 @@ class App(ctk.CTk):
         self.stats_frame = ctk.CTkFrame(parent, fg_color=COLOR_CARD, corner_radius=8)
         self.stats_frame.pack(fill="x", padx=16)
         self._stat_ok   = self._stat_box(self.stats_frame, "✅ OK",    "0", COLOR_SUCCESS)
+        self._stat_live = self._stat_box(self.stats_frame, "⚠ Live CVVI",   "0", COLOR_PENDING)
         self._stat_fail = self._stat_box(self.stats_frame, "❌ FAIL",  "0", COLOR_FAIL)
         self._stat_tot  = self._stat_box(self.stats_frame, "📋 Total", "0", COLOR_TEXT)
 
@@ -277,6 +301,12 @@ class App(ctk.CTk):
             fg_color="#4a1010", hover_color=COLOR_FAIL,
             font=ctk.CTkFont(size=11),
             command=lambda: self._open_results_popup("FAIL")
+        ).pack(side="right", padx=(4, 0))
+        ctk.CTkButton(
+            rh, text="⚠ Live CVVI", width=90, height=26,
+            fg_color="#7a4a00", hover_color="#5a3400",
+            font=ctk.CTkFont(size=11),
+            command=lambda: self._open_results_popup("LIVE")
         ).pack(side="right", padx=(4, 0))
         ctk.CTkButton(
             rh, text="✅ Válidas", width=100, height=26,
@@ -379,9 +409,11 @@ class App(ctk.CTk):
 
     def _update_stats(self):
         ok   = sum(1 for r in self._results if r["status"] == "OK")
+        live = sum(1 for r in self._results if r["status"] == "LIVE")
         fail = sum(1 for r in self._results if r["status"] == "FAIL")
         tot  = len(self._results)
         self._stat_ok.configure(text=str(ok))
+        self._stat_live.configure(text=str(live))
         self._stat_fail.configure(text=str(fail))
         self._stat_tot.configure(text=str(tot))
         if self._total_cards > 0:
@@ -465,7 +497,8 @@ class App(ctk.CTk):
             row = CardRow(self.scroll,
                           number=f"****{card['number'][-4:]}",
                           expiry=f"{card['expiry_month']}/{card['expiry_year']}",
-                          account="en espera...")
+                          account="en espera...",
+                          card_data=card)
             row.pack(fill="x", pady=3)
             self._rows[card["number"]] = row
 
@@ -598,7 +631,7 @@ class App(ctk.CTk):
                            result["status"], result["message"])
             self.after(0, self._update_stats)
             self.after(0, self._log,
-                       f"{'✅' if result['status']=='OK' else '❌'} "
+                       f"{'✅' if result['status']=='OK' else ('⚠' if result['status']=='LIVE' else '❌')} "
                        f"{result['number']} [{result['account']}] → {result['message']}")
 
         async with async_playwright() as pw:
@@ -1145,7 +1178,8 @@ class App(ctk.CTk):
                     self.after(0, self._log, f"[{worker_id}] Enviando pago ****{card['number'][-4:]}...")
                     await _fill(page, card)
                     success, message = await _submit(page)
-                    result["status"]  = "OK" if success else "FAIL"
+                    is_live = not success and "cvv" in message.lower()
+                    result["status"]  = "OK" if success else ("LIVE" if is_live else "FAIL")
                     result["message"] = message
                     if message == "RATE_LIMIT":
                         await asyncio.sleep(10)
@@ -1204,7 +1238,7 @@ class App(ctk.CTk):
         self._results = results
 
     def _open_results_popup(self, status_filter: str):
-        """Abre el popup filtrado por válidas o inválidas desde los botones del header."""
+        """Abre el popup filtrado por válidas, live o inválidas desde los botones del header."""
         if not hasattr(self, "_results") or not self._results:
             from tkinter import messagebox
             messagebox.showinfo("Sin datos", "Aún no hay resultados.")
@@ -1212,7 +1246,7 @@ class App(ctk.CTk):
         filtered = [r for r in self._results if r["status"] == status_filter]
         if not filtered:
             from tkinter import messagebox
-            label = "válidas" if status_filter == "OK" else "inválidas"
+            label = {"OK": "válidas", "LIVE": "live (CVV inválido)", "FAIL": "inválidas"}.get(status_filter, status_filter)
             messagebox.showinfo("Sin datos", f"No hay tarjetas {label} aún.")
             return
         self._show_single_popup(filtered, status_filter)
@@ -1222,10 +1256,11 @@ class App(ctk.CTk):
         from tkinter import filedialog, messagebox
 
         is_ok  = status_filter == "OK"
-        title  = "✅  Tarjetas válidas" if is_ok else "❌  Tarjetas inválidas"
-        color  = COLOR_SUCCESS if is_ok else COLOR_FAIL
-        hover  = "#1b5e20" if is_ok else "#7f0000"
-        fg_btn = "#2e7d32" if is_ok else COLOR_FAIL
+        is_live = status_filter == "LIVE"
+        title  = "✅  Tarjetas válidas" if is_ok else ("⚠  Live — CVV inválido" if is_live else "❌  Tarjetas inválidas")
+        color  = COLOR_SUCCESS if is_ok else (COLOR_PENDING if is_live else COLOR_FAIL)
+        hover  = "#1b5e20" if is_ok else ("#5a3400" if is_live else "#7f0000")
+        fg_btn = "#2e7d32" if is_ok else ("#7a4a00" if is_live else COLOR_FAIL)
 
         lines = []
         for res in filtered:
@@ -1278,7 +1313,7 @@ class App(ctk.CTk):
         copy_btn.pack(side="left", padx=(0, 8))
 
         def save_txt():
-            label = "validas" if is_ok else "invalidas"
+            label = "validas" if is_ok else ("live_cvv_invalido" if is_live else "invalidas")
             path = filedialog.asksaveasfilename(
                 parent=popup,
                 defaultextension=".txt",
