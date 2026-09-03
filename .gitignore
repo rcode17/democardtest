@@ -1,0 +1,22 @@
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Datos sensibles
+accounts.csv
+accounts - copia.csv
+cards.csv
+resultados.json
+
+# Imágenes de debug
+*.png
+
+# Extensiones descargadas
+nopecha_ext/
