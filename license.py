@@ -1,6 +1,7 @@
 """
 Sistema de licencias — Firebase Realtime Database
 Valida: license key + hardware ID + fecha de vencimiento + dispositivo único
+Incluye validación de tiempo contra servidor en línea para prevenir manipulación
 """
 import hashlib
 import json
@@ -17,6 +18,45 @@ logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 logging.getLogger("urllib").setLevel(logging.CRITICAL)
 
 FIREBASE_URL = "https://gentokendev-default-rtdb.firebaseio.com"
+
+
+def get_real_datetime() -> datetime:
+    """
+    Obtiene la fecha/hora real desde un servidor en línea.
+    Intenta múltiples fuentes para mayor confiabilidad.
+    Si falla, usa fecha del sistema como fallback (menos seguro).
+    """
+    # Lista de APIs de tiempo (sin autenticación)
+    time_apis = [
+        "http://worldtimeapi.org/api/timezone/Etc/UTC",
+        "https://timeapi.io/api/Time/current/zone?timeZone=UTC",
+    ]
+    
+    for api_url in time_apis:
+        try:
+            req = urllib.request.Request(
+                api_url,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            response = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(response.read().decode())
+            
+            # worldtimeapi.org formato
+            if "datetime" in data:
+                dt_str = data["datetime"][:19]  # "2026-09-22T15:30:45"
+                return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
+            
+            # timeapi.io formato
+            if "dateTime" in data:
+                dt_str = data["dateTime"][:19]
+                return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
+                
+        except Exception:
+            continue
+    
+    # Fallback: usar fecha del sistema si todas las APIs fallan
+    # (menos seguro pero permite funcionar offline)
+    return datetime.now()
 
 
 def get_hardware_id() -> str:
@@ -96,12 +136,13 @@ def validate_license(key: str) -> tuple[bool, str]:
     if not data.get("active", False):
         return False, "INACTIVE"
 
-    # 3. Verificar fecha de vencimiento
+    # 3. Verificar fecha de vencimiento (con servidor de tiempo en línea)
     expiry_str = data.get("expiry_date", "")
     if expiry_str:
         try:
             expiry = datetime.strptime(expiry_str, "%Y-%m-%d")
-            if datetime.now() > expiry:
+            real_now = get_real_datetime()  # Fecha real desde servidor en línea
+            if real_now > expiry:
                 return False, f"EXPIRED:{expiry_str}"
         except ValueError:
             pass
