@@ -15,9 +15,15 @@ Cómo funciona:
 import asyncio
 import json
 import sys
+import os
 from datetime import datetime
 
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+
+# Silenciar logs de Playwright y HTTP
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+os.environ["DEBUG"] = ""
+os.environ["DEBUG_FILE"] = ""
 
 # ── Configuración ──────────────────────────────────────────────────────────────
 CARD_NAME           = "Juan Perez"   # nombre fijo para todas las tarjetas

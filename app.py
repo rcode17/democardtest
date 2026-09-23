@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox
 from PIL import Image
 
 from flixole_checker import load_cards, load_accounts, worker
+from license import validate_license, error_message, get_expiry_date, get_hardware_id
 
 # ── Tema ──────────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -22,16 +23,16 @@ ctk.set_default_color_theme("blue")
 # ── Límites ───────────────────────────────────────────────────────────────────
 # MAX_CARDS eliminado — sin límite en esta versión
 
-# ── Colores ───────────────────────────────────────────────────────────────────
-COLOR_BG       = "#1a1a2e"
-COLOR_PANEL    = "#16213e"
-COLOR_CARD     = "#0f3460"
-COLOR_ACCENT   = "#e94560"
-COLOR_SUCCESS  = "#4caf50"
-COLOR_FAIL     = "#f44336"
-COLOR_PENDING  = "#ff9800"
-COLOR_TEXT     = "#eaeaea"
-COLOR_SUBTEXT  = "#888888"
+# ── Colores — Modo oscuro con acento morado del logo ─────────────────────────
+COLOR_BG       = "#0f0f1a"     # Negro azulado profundo
+COLOR_PANEL    = "#1a1a2e"     # Azul-gris muy oscuro para paneles
+COLOR_CARD     = "#252539"     # Azul-gris oscuro para tarjetas
+COLOR_ACCENT   = "#8b7dd8"     # Morado medio del logo (para títulos/botones)
+COLOR_SUCCESS  = "#00ff88"     # Verde neón para OK
+COLOR_FAIL     = "#ff4466"     # Rojo neón para FAIL
+COLOR_PENDING  = "#ffaa00"     # Naranja para PENDING
+COLOR_TEXT     = "#ffffff"     # Blanco puro (máximo contraste)
+COLOR_SUBTEXT  = "#b0b0c8"     # Gris claro azulado (buen contraste)
 
 
 class CardRow(ctk.CTkFrame):
@@ -119,7 +120,12 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("CardChecker R")
+        # ── Verificar licencia antes de cargar la app ──
+        if not self._check_license():
+            self.destroy()
+            return
+
+        self.title("CardChecker")
         self.geometry("900x680")
         self.minsize(800, 550)
         self.configure(fg_color=COLOR_BG)
@@ -149,17 +155,19 @@ class App(ctk.CTk):
 
         # Logo + título
         try:
-            logo_img = ctk.CTkImage(
-                light_image=Image.open(Path(__file__).parent / "logo.png"),
-                dark_image=Image.open(Path(__file__).parent / "logo.png"),
-                size=(40, 40)
-            )
-            ctk.CTkLabel(header, image=logo_img, text="").pack(side="left", padx=(16, 4), pady=12)
-        except Exception:
-            pass
+            logo_path = Path(__file__).parent / "logo.png"
+            if logo_path.exists():
+                logo_img = ctk.CTkImage(
+                    light_image=Image.open(logo_path),
+                    dark_image=Image.open(logo_path),
+                    size=(40, 40)
+                )
+                ctk.CTkLabel(header, image=logo_img, text="").pack(side="left", padx=(16, 4), pady=12)
+        except Exception as e:
+            print(f"Error cargando logo: {e}")
 
         ctk.CTkLabel(
-            header, text="CardChecker R",
+            header, text="CardChecker",
             font=ctk.CTkFont(size=20, weight="bold"), text_color=COLOR_ACCENT
         ).pack(side="left", padx=(0, 20), pady=14)
 
@@ -252,7 +260,7 @@ class App(ctk.CTk):
         self.workers_label.pack(pady=(0, 4))
 
         # ── Headless siempre activo ──
-        self.headless_var = ctk.BooleanVar(value=True)  # headless: navegador oculto
+        self.headless_var = ctk.BooleanVar(value=True)  # navegador oculto por defecto
 
         # Separador
         ctk.CTkFrame(parent, height=1, fg_color=COLOR_CARD).pack(fill="x", padx=16, pady=12)
@@ -635,6 +643,10 @@ class App(ctk.CTk):
                        f"{result['number']} [{result['account']}] → {result['message']}")
 
         async with async_playwright() as pw:
+            # Silenciar logs de Playwright
+            import logging
+            logging.getLogger("playwright").setLevel(logging.ERROR)
+            
             launch_kwargs = {
                 "headless": headless,
                 "executable_path": browser_path,
@@ -749,7 +761,7 @@ class App(ctk.CTk):
                 await page.wait_for_timeout(1_000)
                 count = await page.locator('iframe[src*="adyen"], iframe[src*="checkoutshopper"]').count()
                 if count > 0:
-                    self.after(0, self._log, f"[{worker_id}] Adyen cargado en {i+1}s — URL: {page.url}")
+                    self.after(0, self._log, f"[{worker_id}] Pago cargado ({i+1}s)")
                     return True
 
             self.after(0, self._log, f"[{worker_id}] Adyen no cargó. URL: {page.url}")
@@ -791,16 +803,13 @@ class App(ctk.CTk):
                         code   = data.get("resultCode") or data.get("result") or ""
                         reason = data.get("refusalReason") or data.get("message") or ""
                         action = data.get("action", {})
-                        # LOG: mostrar toda respuesta de Adyen
-                        self.after(0, self._log, f"🌐 RED [{response.status}] {url[:60]}")
-                        self.after(0, self._log, f"   resultCode={code} reason={reason} action={action.get('type') if isinstance(action, dict) else action}")
+                        # Guardar resultado sin loguear detalles HTTP
                         if code and code not in ("Success",):  # ignorar fingerprint 3DS
                             payment_result["code"]   = code
                             payment_result["reason"] = reason
                             payment_result["action"] = action.get("type") if isinstance(action, dict) else None
-                    except Exception as ex:
-                        # Loguear respuestas que no son JSON pero son de Adyen
-                        self.after(0, self._log, f"🌐 RED (no-JSON) [{response.status}] {url[:60]}")
+                    except Exception:
+                        pass  # Respuestas no-JSON ignoradas
 
             page.on("response", handle_response)
 
@@ -890,7 +899,7 @@ class App(ctk.CTk):
 
                 # ✅ 3DS return — esperar que resuelva hacia FlixOlé
                 if "threeDS/return" in url or "threeDS2.shtml" in url:
-                    self.after(0, self._log, f"   ► 3DS en proceso, esperando retorno...")
+                    self.after(0, self._log, f"   ► Verificando autenticación 3D Secure...")
                     for i in range(25):
                         await page.wait_for_timeout(1_000)
                         url  = page.url
@@ -911,7 +920,7 @@ class App(ctk.CTk):
                             return False, f"Rechazada: {motivo}" if motivo else "Rechazada: pago no confirmado"
                         # Si llevamos más de 8s en threeDS2.shtml sin avanzar = OTP interactivo
                         if i >= 7 and "threeDS2.shtml" in url:
-                            self.after(0, self._log, f"   ► OTP interactivo detectado en {url[:60]}")
+                            self.after(0, self._log, f"   ► Requiere verificación adicional del banco")
                             return False, "Rechazada: Requiere OTP del banco"
                         # Si regresó a FlixOlé (sin 3DS en la URL), salir
                         if "ver.flixole.com" in url and "threeDS" not in url and "checkoutshopper" not in url:
@@ -1485,6 +1494,135 @@ class App(ctk.CTk):
                 f.write("\n".join(lines))
             messagebox.showinfo("Exportado",
                 f"{len(lines)} tarjeta{'s' if len(lines)!=1 else ''} guardada{'s' if len(lines)!=1 else ''} en:\n{path}")
+
+
+    def _check_license(self) -> bool:
+        """
+        Verifica la licencia al inicio de la app.
+        Retorna True si es válida, False si no (y muestra pantalla de activación).
+        """
+        LICENSE_FILE = Path.home() / ".cardchecker_license"
+
+        # Leer licencia guardada si existe
+        stored_key = None
+        if LICENSE_FILE.exists():
+            try:
+                stored_key = LICENSE_FILE.read_text().strip()
+            except Exception:
+                pass
+
+        # Si hay licencia guardada, validarla
+        if stored_key:
+            ok, reason = validate_license(stored_key)
+            if ok:
+                # Licencia válida — mostrar fecha de vencimiento en el título
+                expiry = get_expiry_date(stored_key)
+                if expiry:
+                    self.after(100, lambda: self.title(f"CardChecker — Licencia válida hasta {expiry}"))
+                return True
+            else:
+                # Licencia inválida — mostrar razón y pedir nueva
+                if reason != "NO_INTERNET":
+                    LICENSE_FILE.unlink(missing_ok=True)
+                msg = error_message(reason)
+                messagebox.showerror("Licencia inválida", msg)
+
+        # No hay licencia o es inválida — mostrar pantalla de activación
+        return self._show_activation_dialog()
+
+    def _show_activation_dialog(self) -> bool:
+        """Muestra ventana de activación y retorna True si se activó correctamente."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Activar CardChecker")
+        dialog.geometry("500x350")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLOR_BG)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Centrar en pantalla
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (350 // 2)
+        dialog.geometry(f"500x350+{x}+{y}")
+
+        activated = [False]  # lista para poder modificar desde closure
+
+        ctk.CTkLabel(
+            dialog, text="🔐 Activación de Licencia",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=COLOR_ACCENT
+        ).pack(pady=(30, 10))
+
+        ctk.CTkLabel(
+            dialog, text="Ingresa tu clave de licencia para activar la app",
+            font=ctk.CTkFont(size=13),
+            text_color=COLOR_SUBTEXT
+        ).pack(pady=(0, 20))
+
+        # Hardware ID del dispositivo
+        hw_id = get_hardware_id()
+        ctk.CTkLabel(
+            dialog, text=f"ID del dispositivo: {hw_id[:16]}...",
+            font=ctk.CTkFont(size=11),
+            text_color=COLOR_SUBTEXT
+        ).pack(pady=(0, 20))
+
+        # Campo de licencia
+        entry = ctk.CTkEntry(
+            dialog, width=380, height=40,
+            placeholder_text="CCR-XXXX-XXXX-XXXX",
+            font=ctk.CTkFont(size=14),
+            justify="center"
+        )
+        entry.pack(pady=10)
+
+        status_label = ctk.CTkLabel(dialog, text="", font=ctk.CTkFont(size=12))
+        status_label.pack(pady=10)
+
+        def activate():
+            key = entry.get().strip()
+            if not key:
+                status_label.configure(text="⚠ Ingresa una clave de licencia", text_color=COLOR_ACCENT)
+                return
+
+            status_label.configure(text="⏳ Verificando...", text_color=COLOR_SUBTEXT)
+            dialog.update()
+
+            ok, reason = validate_license(key)
+
+            if ok:
+                # Guardar licencia
+                LICENSE_FILE = Path.home() / ".cardchecker_license"
+                LICENSE_FILE.write_text(key)
+                status_label.configure(text="✅ Licencia activada correctamente", text_color=COLOR_SUCCESS)
+                dialog.after(1500, dialog.destroy)
+                activated[0] = True
+            else:
+                msg = error_message(reason)
+                status_label.configure(text=f"❌ {msg.split('.')[0]}", text_color=COLOR_ACCENT)
+
+        btn = ctk.CTkButton(
+            dialog, text="Activar", width=200, height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=COLOR_ACCENT, hover_color="#d13a52",
+            command=activate
+        )
+        btn.pack(pady=20)
+
+        # Enter activa
+        entry.bind("<Return>", lambda e: activate())
+
+        # Botón salir
+        ctk.CTkButton(
+            dialog, text="Salir sin activar", width=120, height=30,
+            fg_color="transparent", hover_color=COLOR_CARD,
+            font=ctk.CTkFont(size=11),
+            command=dialog.destroy
+        ).pack(pady=(10, 0))
+
+        dialog.wait_window()
+        return activated[0]
 
 
 if __name__ == "__main__":
