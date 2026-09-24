@@ -1,0 +1,51 @@
+{
+  "CCR-0004-F7G8": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 4"
+  },
+  "CCR-0005-H9I0": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 5"
+  },
+  "CCR-0006-J1K2": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 6"
+  },
+  "CCR-0007-L3M4": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 7"
+  },
+  "CCR-0008-N5O6": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 8"
+  },
+  "CCR-0009-P7Q8": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 9"
+  },
+  "CCR-0010-R9S0": {
+    "active": true,
+    "created": "2026-09-22",
+    "expiry_date": "2027-12-31",
+    "hardware_id": "",
+    "user": "Cliente 10"
+  }
+}
