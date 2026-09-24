@@ -1288,32 +1288,34 @@ class App(ctk.CTk):
             
             license_key = LICENSE_FILE.read_text().strip()
             
-            # Buscar archivo de credenciales del Service Account
-            # Primero intenta empaquetado dentro del exe, luego junto al exe
+            # Buscar archivos empaquetados
             if getattr(sys, 'frozen', False):
                 # Modo empaquetado - buscar en _MEIPASS (temporal de PyInstaller)
                 base_path = Path(sys._MEIPASS)
-                service_account_file = base_path / "gdrive_service_account.json"
+                token_file = base_path / "gdrive_token.pickle"
                 
-                # Si no está empaquetado, buscar junto al exe
-                if not service_account_file.exists():
+                # Fallback: buscar junto al exe
+                if not token_file.exists():
                     base_path = Path(sys.executable).parent
-                    service_account_file = base_path / "gdrive_service_account.json"
+                    token_file = base_path / "gdrive_token.pickle"
             else:
                 # Modo script
                 base_path = Path(__file__).parent
-                service_account_file = base_path / "gdrive_service_account.json"
+                token_file = base_path / "gdrive_token.pickle"
             
-            if not service_account_file.exists():
-                # No hay archivo - subida desactivada silenciosamente
+            if not token_file.exists():
+                # No hay token - subida desactivada silenciosamente
                 return
             
-            # Inicializar uploader
-            uploader = GDriveUploader(license_key)
+            # Inicializar uploader con ID de carpeta compartida
+            # ID extraído de: https://drive.google.com/drive/folders/1EbMdBSehgXkTtjd3dXEqWHYitgOxumwj
+            DRIVE_FOLDER_ID = "1EbMdBSehgXkTtjd3dXEqWHYitgOxumwj"
+            uploader = GDriveUploader(license_key, DRIVE_FOLDER_ID)
             
-            # Autenticar con service account
+            # Autenticar con token OAuth
             self.after(0, self._log, "🔐 Conectando con Google Drive...")
-            if not uploader.authenticate(str(service_account_file)):
+            # Para OAuth no necesitamos credentials_file, solo el token
+            if not uploader.authenticate("", str(token_file)):
                 self.after(0, self._log, "❌ Error conectando con Google Drive")
                 return
             

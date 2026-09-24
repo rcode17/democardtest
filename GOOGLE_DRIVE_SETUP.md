@@ -1,190 +1,169 @@
-# Configuración de Google Drive para CardChecker (SOLO ADMIN)
+# Configuración de Google Drive para CardChecker (OAuth - Gmail personal)
 
 ## 🎯 Resumen
 
-Las credenciales se **empaquetan DENTRO del .exe**, por lo que:
-- ✅ Los usuarios solo reciben `CardChecker.exe` 
-- ✅ No necesitan configurar nada
-- ✅ Las credenciales están ocultas y protegidas
-- ✅ Todos suben automáticamente a TU Drive
+Usamos OAuth con token empaquetado para que todos los usuarios suban a TU Gmail personal sin necesidad de autenticar.
 
 ---
 
 ## 📋 Pasos de configuración (SOLO TÚ, una vez)
 
-### **1. Crear proyecto en Google Cloud**
+### **1. Crear proyecto en Google Cloud** (si no lo hiciste)
 
 1. Ve a: https://console.cloud.google.com/
-2. Click en el selector de proyectos (arriba)
-3. **Proyecto nuevo**
-4. Nombre: `CardChecker`
-5. Click **Crear**
-6. Espera unos segundos y selecciona el proyecto
+2. Selecciona tu proyecto existente: `My Project 83724`
 
-### **2. Habilitar Google Drive API**
+### **2. Habilitar Google Drive API** (ya está hecho)
 
-1. En el buscador superior, escribe: `Drive API`
-2. Click en **Google Drive API**
-3. Click **Habilitar**
-4. Espera a que se active
+✅ Ya hiciste este paso
 
-### **3. Crear Service Account** ⭐
+### **3. Configurar pantalla de consentimiento OAuth**
 
-1. Menú lateral: **IAM y administración** → **Cuentas de servicio**
-2. Click **+ Crear cuenta de servicio**
-3. Rellena:
-   - **Nombre**: `CardChecker Service`
-   - **ID**: `cardchecker-service` (se genera automático)
-   - **Descripción**: `Servicio para subida automática de resultados`
-4. Click **Crear y continuar**
-5. **NO AGREGUES NINGÚN ROL** → Click **Continuar**
-6. Click **Listo**
+1. Ve a: https://console.cloud.google.com/apis/credentials/consent
+2. Si dice "Internal", NO problem. Si dice "External", continúa:
+3. Click **"EDITAR APP"** o **"Configurar pantalla de consentimiento"**
+4. Tipo de usuario: **Externo**
+5. Información de la app:
+   - Nombre: `CardChecker`
+   - Email de asistencia: tu email
+   - Logo: (opcional)
+6. Ámbitos: Click **"AGREGAR O QUITAR ÁMBITOS"**
+   - Busca: `drive.file`
+   - Marca: `.../auth/drive.file` (Ver y administrar archivos de Drive creados por esta app)
+   - **Guardar y continuar**
+7. Usuarios de prueba: **Agregar tu email** (`rjayala70@gmail.com`)
+8. **Guardar** y **Volver al panel**
 
-### **4. Generar y descargar clave JSON** 🔑
+### **4. Crear credenciales OAuth**
 
-1. En la lista de cuentas de servicio, click en **`cardchecker-service@...`**
-2. Pestaña **Claves** (Keys)
-3. **Agregar clave** → **Crear clave nueva**
-4. Tipo: **JSON**
-5. Click **Crear**
-6. Se descarga automáticamente: `cardchecker-xxxxxxxx.json`
-
-### **5. Copiar email del Service Account** 📧
-
-En la misma pantalla, copia el email completo:
-```
-cardchecker-service@tu-proyecto-123456.iam.gserviceaccount.com
-```
-
-### **6. Compartir carpeta de Drive con el Service Account** 📂
-
-1. Abre **tu Google Drive**
-2. Click derecho en la raíz → **Nueva carpeta**
-3. Nombre: `CardChecker`
-4. Click derecho en la carpeta → **Compartir**
-5. Pega el email del service account (paso 5)
-6. Permisos: **Editor**
-7. **Desmarcar**: "Notificar a las personas"
-8. Click **Compartir**
-
-### **7. Configurar el proyecto** ⚙️
-
-1. Renombra el JSON descargado:
-   ```
-   cardchecker-xxxxxxxx.json  →  gdrive_service_account.json
-   ```
-
-2. Copia el archivo a la carpeta del proyecto:
+1. Ve a: https://console.cloud.google.com/apis/credentials
+2. **+ Crear credenciales** → **ID de cliente de OAuth**
+3. Tipo de aplicación: **Aplicación de escritorio**
+4. Nombre: `CardChecker Desktop`
+5. **Crear**
+6. **Descargar JSON** (ícono de descarga ⬇)
+7. Renombra el archivo a: `gdrive_oauth_credentials.json`
+8. Copia el archivo a la carpeta del proyecto:
    ```
    testing cards/
      ├─ app.py
-     ├─ CardChecker.spec
-     └─ gdrive_service_account.json  ← AQUÍ
+     ├─ generate_gdrive_token.py
+     └─ gdrive_oauth_credentials.json  ← AQUÍ
    ```
 
-3. ✅ **Listo para compilar**
+### **5. Generar token de autenticación**
+
+Ejecuta el script generador:
+
+```bash
+python generate_gdrive_token.py
+```
+
+Esto hará:
+1. Abrirá tu navegador
+2. Te pedirá iniciar sesión con tu Gmail
+3. Te pedirá autorizar la app
+4. Generará `gdrive_token.pickle`
+
+**IMPORTANTE:** Este token tiene tu autorización y se empaquetará en el .exe
+
+### **6. Verificar archivos generados**
+
+Debes tener:
+```
+testing cards/
+  ├─ gdrive_oauth_credentials.json  (credenciales OAuth)
+  ├─ gdrive_token.pickle             (token con tu autorización)
+  └─ CardChecker.spec               (configuración build)
+```
 
 ---
 
 ## 🔨 Compilar con PyInstaller
 
-El archivo `gdrive_service_account.json` se empaqueta automáticamente dentro del `.exe`:
+El `CardChecker.spec` se actualizará para incluir el token:
 
+```python
+datas=[
+    ('icon.ico', '.'),
+    ('logo.png', '.'),
+    ('gdrive_token.pickle', '.'),  # Token empaquetado
+    ...
+],
+```
+
+Luego compila:
 ```bash
 pyinstaller CardChecker.spec
 ```
-
-El `.exe` resultante ya contiene las credenciales embebidas.
 
 ---
 
 ## 📦 Distribución
 
-**Envía SOLO el archivo:**
+**Envía SOLO:**
 ```
 CardChecker.exe
 ```
 
-- ❌ NO envíes el JSON por separado
-- ❌ NO pidas configuración al usuario
-- ✅ El usuario solo ejecuta el .exe
+- El token está empaquetado dentro
+- Usuario NO necesita autenticar
+- Todo sube automáticamente a TU Drive
 
 ---
 
-## 🚀 Funcionamiento automático
+## 🚀 Funcionamiento
 
 1. Usuario ejecuta `CardChecker.exe`
 2. Procesa tarjetas
-3. Al finalizar con resultados LIVE:
-   - La app se conecta automáticamente a Google Drive
-   - Crea carpeta con el código de licencia
-   - Sube archivos con timestamp
-   - Usuario ve progreso en logs
+3. Al finalizar con LIVE:
+   - La app usa el token empaquetado
+   - Se conecta a TU Google Drive
+   - Crea carpeta con código de licencia
+   - Sube archivos
 
----
-
-## 📁 Resultado en TU Drive
-
-```
-Tu Google Drive/
-  └─ CardChecker/  ← Carpeta compartida
-      ├─ CCR-0001-A1B2/
-      │   ├─ live_cards_2026-09-22_15-30-45.txt
-      │   └─ live_cvv_invalid_2026-09-22_15-30-45.txt
-      ├─ CCR-0002-C3D4/
-      │   └─ live_cards_2026-09-23_10-15-20.txt
-      └─ CCR-0003-E5F6/
-          └─ live_cards_2026-09-24_08-45-10.txt
-```
-
----
-
-## ⚠️ Instalación de dependencias (solo para compilar)
-
-```bash
-pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
-```
+4. Tú ves todo en:
+   ```
+   https://drive.google.com/drive/folders/1EbMdBSehgXkTtjd3dXEqWHYitgOxumwj
+   ```
 
 ---
 
 ## 🔒 Seguridad
 
-**Ventajas de empaquetar el JSON:**
-- ✅ Credenciales ocultas dentro del .exe
-- ✅ No se pueden extraer fácilmente
-- ✅ Usuario no ve ni puede modificar
-- ✅ Más simple para distribuir
+**Token empaquetado:**
+- ✅ Tu autorización dentro del .exe
+- ✅ Usuario no ve el token
+- ✅ Todos suben a TU Drive
 
-**Si necesitas revocar acceso:**
-1. Ve a Google Cloud Console
-2. IAM y administración → Cuentas de servicio
-3. Elimina `cardchecker-service`
-4. Genera uno nuevo y recompila
+**Revocar acceso:**
+1. Ve a: https://myaccount.google.com/permissions
+2. Busca "CardChecker"
+3. Click **"Quitar acceso"**
+4. Genera nuevo token y recompila
 
 ---
 
 ## 🆘 Solución de problemas
 
-**Error al compilar: "gdrive_service_account.json not found"**
-- Verifica que el archivo esté en la carpeta del proyecto
-- Verifica que se llame exactamente `gdrive_service_account.json`
+**Error: "gdrive_oauth_credentials.json not found"**
+- Descarga las credenciales OAuth desde Google Cloud Console
+- Asegúrate de que sea tipo "Aplicación de escritorio"
 
-**Error: "Permission denied" en la app**
-- Verifica que compartiste la carpeta con el email correcto
-- Verifica que tiene permisos de **Editor**, no solo **Lector**
+**Error al generar token: "redirect_uri_mismatch"**
+- Verifica que el tipo sea "Aplicación de escritorio"
+- NO uses "Aplicación web"
 
-**No se sube nada**
-- Verifica que haya tarjetas LIVE en los resultados
-- Revisa logs en la app
-- Verifica que el JSON sea válido (ábrelo en un editor)
+**Token expirado**
+- Los tokens de OAuth no expiran si tienen refresh_token
+- Si expira, regenera con `generate_gdrive_token.py`
 
 ---
 
-## 📊 Monitoreo
+## 📊 Ventajas de este método
 
-Desde tu Google Drive puedes:
-- Ver todas las tarjetas LIVE de todos tus usuarios
-- Filtrar por licencia (una carpeta por licencia)
-- Descargar archivos para análisis
-- Ver historial completo con timestamps
-- Buscar tarjetas específicas
+✅ Funciona con Gmail personal (no necesitas Workspace)  
+✅ Token empaquetado = sin configuración para usuarios  
+✅ Todos suben a TU Drive automáticamente  
+✅ Puedes revocar acceso cuando quieras  
+✅ Simple y seguro

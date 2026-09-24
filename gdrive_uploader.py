@@ -1,37 +1,43 @@
 """
 Google Drive Uploader
-Sube resultados LIVE organizados por licencia a Google Drive usando Service Account
-Todos los usuarios suben al Drive del administrador sin autenticación individual
+Sube resultados LIVE organizados por licencia a Google Drive usando OAuth
+Todos los usuarios suben al Drive del administrador con credenciales compartidas
 """
 import json
+import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
 
 try:
-    from google.oauth2 import service_account
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaInMemoryUpload
     GDRIVE_AVAILABLE = True
 except ImportError:
     GDRIVE_AVAILABLE = False
 
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
 
 class GDriveUploader:
-    """Gestor de subida de resultados a Google Drive con Service Account"""
+    """Gestor de subida de resultados a Google Drive con OAuth"""
     
-    def __init__(self, license_key: str):
+    def __init__(self, license_key: str, root_folder_id: str = None):
         self.license_key = license_key
         self.service = None
-        self.root_folder_id = None
+        self.root_folder_id = root_folder_id  # ID de carpeta compartida
         self.license_folder_id = None
         
-    def authenticate(self, service_account_file: str) -> bool:
+    def authenticate(self, credentials_file: str, token_file: str) -> bool:
         """
-        Autentica con Google Drive usando Service Account.
+        Autentica con Google Drive usando OAuth.
         
         Args:
-            service_account_file: Ruta al archivo JSON de credenciales
+            credentials_file: Ruta al archivo client_secret.json (OAuth credentials)
+            token_file: Ruta donde se guarda el token (empaquetado en el exe)
         
         Returns:
             True si la autenticación fue exitosa
@@ -40,12 +46,24 @@ class GDriveUploader:
             return False
             
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                service_account_file,
-                scopes=['https://www.googleapis.com/auth/drive.file']
-            )
+            creds = None
             
-            self.service = build('drive', 'v3', credentials=credentials)
+            # Verificar si existe token guardado (empaquetado)
+            token_path = Path(token_file)
+            if token_path.exists():
+                with open(token_path, 'rb') as token:
+                    creds = pickle.load(token)
+            
+            # Si no hay credenciales válidas, no podemos autenticar
+            # (en modo empaquetado, el token debe estar pre-generado)
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    # Sin credenciales válidas, no se puede autenticar
+                    return False
+            
+            self.service = build('drive', 'v3', credentials=creds)
             return True
             
         except Exception as e:
@@ -97,11 +115,11 @@ class GDriveUploader:
     
     def setup_folders(self) -> bool:
         """
-        Crea estructura de carpetas:
-        CardChecker/
-          ├─ CCR-XXXX-XXXX/
-          │   ├─ live_cards.txt
-          │   └─ live_cvv_invalid.txt
+        Crea estructura de carpetas en la carpeta compartida:
+        CardChecker (compartida)/
+          └─ CCR-XXXX-XXXX/
+              ├─ live_cards.txt
+              └─ live_cvv_invalid.txt
         
         Returns:
             True si se crearon las carpetas correctamente
@@ -110,10 +128,11 @@ class GDriveUploader:
             return False
         
         try:
-            # Carpeta raíz "CardChecker"
-            self.root_folder_id = self._get_or_create_folder("CardChecker")
+            # Si no se especificó root_folder_id, buscar o crear "CardChecker"
+            if not self.root_folder_id:
+                self.root_folder_id = self._get_or_create_folder("CardChecker")
             
-            # Carpeta de la licencia
+            # Carpeta de la licencia dentro de la carpeta compartida
             self.license_folder_id = self._get_or_create_folder(
                 self.license_key,
                 self.root_folder_id

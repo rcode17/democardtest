@@ -12,7 +12,7 @@ a = Analysis(
     datas=[
         ('icon.ico', '.'),
         ('logo.png', '.'),
-        ('gdrive_service_account.json', '.'),  # Credenciales de Google Drive empaquetadas
+        ('gdrive_token.pickle', '.'),  # Token OAuth empaquetado
         (chromium_src, 'chromium-1234/chrome-win64'),
     ],
     hiddenimports=[
