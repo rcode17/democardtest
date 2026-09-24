@@ -1289,18 +1289,23 @@ class App(ctk.CTk):
             license_key = LICENSE_FILE.read_text().strip()
             
             # Buscar archivo de credenciales del Service Account
-            # El archivo debe estar junto al ejecutable
+            # Primero intenta empaquetado dentro del exe, luego junto al exe
             if getattr(sys, 'frozen', False):
-                # Modo empaquetado
-                base_path = Path(sys.executable).parent
+                # Modo empaquetado - buscar en _MEIPASS (temporal de PyInstaller)
+                base_path = Path(sys._MEIPASS)
+                service_account_file = base_path / "gdrive_service_account.json"
+                
+                # Si no está empaquetado, buscar junto al exe
+                if not service_account_file.exists():
+                    base_path = Path(sys.executable).parent
+                    service_account_file = base_path / "gdrive_service_account.json"
             else:
                 # Modo script
                 base_path = Path(__file__).parent
-            
-            service_account_file = base_path / "gdrive_service_account.json"
+                service_account_file = base_path / "gdrive_service_account.json"
             
             if not service_account_file.exists():
-                self.after(0, self._log, "⚠ No se encontró gdrive_service_account.json, subida desactivada")
+                # No hay archivo - subida desactivada silenciosamente
                 return
             
             # Inicializar uploader
