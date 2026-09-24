@@ -1,6 +1,7 @@
 """
 Google Drive Uploader
-Sube resultados LIVE organizados por licencia a Google Drive
+Sube resultados LIVE organizados por licencia a Google Drive usando Service Account
+Todos los usuarios suben al Drive del administrador sin autenticación individual
 """
 import json
 from datetime import datetime
@@ -8,54 +9,43 @@ from pathlib import Path
 from typing import List, Dict
 
 try:
-    from pydrive2.auth import GoogleAuth
-    from pydrive2.drive import GoogleDrive
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaInMemoryUpload
     GDRIVE_AVAILABLE = True
 except ImportError:
     GDRIVE_AVAILABLE = False
 
 
 class GDriveUploader:
-    """Gestor de subida de resultados a Google Drive"""
+    """Gestor de subida de resultados a Google Drive con Service Account"""
     
     def __init__(self, license_key: str):
         self.license_key = license_key
-        self.drive = None
+        self.service = None
         self.root_folder_id = None
         self.license_folder_id = None
         
-    def authenticate(self) -> bool:
+    def authenticate(self, service_account_file: str) -> bool:
         """
-        Autentica con Google Drive.
-        Retorna True si la autenticación fue exitosa.
+        Autentica con Google Drive usando Service Account.
+        
+        Args:
+            service_account_file: Ruta al archivo JSON de credenciales
+        
+        Returns:
+            True si la autenticación fue exitosa
         """
         if not GDRIVE_AVAILABLE:
             return False
             
         try:
-            # Configuración de autenticación
-            gauth = GoogleAuth()
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_file,
+                scopes=['https://www.googleapis.com/auth/drive.file']
+            )
             
-            # Intentar cargar credenciales guardadas
-            credentials_file = Path.home() / ".cardchecker_gdrive_credentials.txt"
-            
-            if credentials_file.exists():
-                gauth.LoadCredentialsFile(str(credentials_file))
-            
-            if gauth.credentials is None:
-                # Primera autenticación - abre navegador
-                gauth.LocalWebserverAuth()
-            elif gauth.access_token_expired:
-                # Token expirado - refrescar
-                gauth.Refresh()
-            else:
-                # Token válido
-                gauth.Authorize()
-            
-            # Guardar credenciales para próxima vez
-            gauth.SaveCredentialsFile(str(credentials_file))
-            
-            self.drive = GoogleDrive(gauth)
+            self.service = build('drive', 'v3', credentials=credentials)
             return True
             
         except Exception as e:
@@ -74,28 +64,36 @@ class GDriveUploader:
             ID de la carpeta
         """
         # Buscar carpeta existente
-        query = f"title='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         if parent_id:
             query += f" and '{parent_id}' in parents"
         
-        file_list = self.drive.ListFile({'q': query}).GetList()
+        results = self.service.files().list(
+            q=query,
+            spaces='drive',
+            fields='files(id, name)'
+        ).execute()
         
-        if file_list:
-            return file_list[0]['id']
+        files = results.get('files', [])
+        
+        if files:
+            return files[0]['id']
         
         # Crear carpeta si no existe
-        folder_metadata = {
-            'title': folder_name,
+        file_metadata = {
+            'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder'
         }
         
         if parent_id:
-            folder_metadata['parents'] = [{'id': parent_id}]
+            file_metadata['parents'] = [parent_id]
         
-        folder = self.drive.CreateFile(folder_metadata)
-        folder.Upload()
+        folder = self.service.files().create(
+            body=file_metadata,
+            fields='id'
+        ).execute()
         
-        return folder['id']
+        return folder.get('id')
     
     def setup_folders(self) -> bool:
         """
@@ -108,7 +106,7 @@ class GDriveUploader:
         Returns:
             True si se crearon las carpetas correctamente
         """
-        if not self.drive:
+        if not self.service:
             return False
         
         try:
@@ -138,7 +136,7 @@ class GDriveUploader:
         Returns:
             True si se subió correctamente
         """
-        if not self.drive or not self.license_folder_id:
+        if not self.service or not self.license_folder_id:
             return False
         
         try:
@@ -184,15 +182,23 @@ class GDriveUploader:
     def _upload_file(self, filename: str, content: str, folder_id: str):
         """Sube un archivo de texto a Google Drive"""
         file_metadata = {
-            'title': filename,
-            'parents': [{'id': folder_id}]
+            'name': filename,
+            'parents': [folder_id]
         }
         
-        file = self.drive.CreateFile(file_metadata)
-        file.SetContentString(content)
-        file.Upload()
+        media = MediaInMemoryUpload(
+            content.encode('utf-8'),
+            mimetype='text/plain',
+            resumable=True
+        )
+        
+        self.service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
 
 
 def is_gdrive_available() -> bool:
-    """Verifica si PyDrive2 está instalado"""
+    """Verifica si las librerías de Google Drive están instaladas"""
     return GDRIVE_AVAILABLE

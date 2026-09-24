@@ -1288,13 +1288,28 @@ class App(ctk.CTk):
             
             license_key = LICENSE_FILE.read_text().strip()
             
+            # Buscar archivo de credenciales del Service Account
+            # El archivo debe estar junto al ejecutable
+            if getattr(sys, 'frozen', False):
+                # Modo empaquetado
+                base_path = Path(sys.executable).parent
+            else:
+                # Modo script
+                base_path = Path(__file__).parent
+            
+            service_account_file = base_path / "gdrive_service_account.json"
+            
+            if not service_account_file.exists():
+                self.after(0, self._log, "⚠ No se encontró gdrive_service_account.json, subida desactivada")
+                return
+            
             # Inicializar uploader
             uploader = GDriveUploader(license_key)
             
-            # Autenticar
-            self.after(0, self._log, "🔐 Autenticando con Google Drive...")
-            if not uploader.authenticate():
-                self.after(0, self._log, "❌ Error autenticando con Google Drive")
+            # Autenticar con service account
+            self.after(0, self._log, "🔐 Conectando con Google Drive...")
+            if not uploader.authenticate(str(service_account_file)):
+                self.after(0, self._log, "❌ Error conectando con Google Drive")
                 return
             
             # Crear carpetas
@@ -1305,7 +1320,7 @@ class App(ctk.CTk):
             # Subir archivos
             self.after(0, self._log, f"☁️ Subiendo {len(live_ok)} LIVE + {len(live_cvv_invalid)} LIVE (CVV inválido)...")
             if uploader.upload_results(live_ok, live_cvv_invalid):
-                self.after(0, self._log, f"✅ Resultados subidos a Drive/{license_key}/")
+                self.after(0, self._log, f"✅ Resultados subidos a Drive/CardChecker/{license_key}/")
             else:
                 self.after(0, self._log, "❌ Error subiendo archivos")
                 

