@@ -443,6 +443,23 @@ class App(ctk.CTk):
         if self._running:
             return
 
+        # ── Validar licencia antes de iniciar procesamiento ──
+        LICENSE_FILE = Path.home() / ".cardchecker_license"
+        if not LICENSE_FILE.exists():
+            messagebox.showerror("Licencia inválida", "No se encontró licencia. Reinicia la app para activar.")
+            return
+        
+        try:
+            stored_key = LICENSE_FILE.read_text().strip()
+            ok, reason = validate_license(stored_key)
+            if not ok:
+                msg = error_message(reason)
+                messagebox.showerror("Licencia inválida", f"Tu licencia no es válida:\n\n{msg}\n\nCierra la app y vuelve a abrirla para reactivar.")
+                return
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo validar la licencia:\n{e}")
+            return
+
         cards_path = self.cards_textbox.get("1.0", "end")
 
         # Parsear tarjetas directo del textbox
