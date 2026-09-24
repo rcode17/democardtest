@@ -20,3 +20,9 @@ resultados.json
 
 # Extensiones descargadas
 nopecha_ext/
+
+# Google Drive credentials (NO SUBIR)
+gdrive_oauth_credentials.json
+gdrive_service_account.json
+gdrive_token.pickle
+.gdrive_credentials.json
